@@ -1,0 +1,10 @@
+# Phase 1 — Neural Network Core dependencies
+#
+# numpy       : the only compute dependency (scalar + vectorized autograd engines)
+# torch        : required by torchvision
+# torchvision : used solely to download / load the MNIST dataset
+#
+# Install with:  pip install -r requirements.txt
+numpy>=1.24
+torch>=2.0
+torchvision>=0.15
