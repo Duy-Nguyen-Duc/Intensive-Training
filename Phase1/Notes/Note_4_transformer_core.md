@@ -2,7 +2,6 @@
 
 Notes on the attention mechanism and the Transformer architecture: scaled dot-product attention, multi-head attention, positional encoding, the block structure, the three architecture families, tokenization, and causal masking.
 
-> Builds on [`nn_core.md`](./nn_core.md) (LayerNorm, residuals, softmax/cross-entropy) and [`math_foundations.md`](./math_foundations.md) (matrix products, softmax). Attention is, at heart, a content-based weighted average computed with matrix multiplies.
 
 ---
 

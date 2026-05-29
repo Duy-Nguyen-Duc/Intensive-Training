@@ -143,6 +143,7 @@ Leading minors $2 > 0$ and $\det H = 8 - 1 = 7 > 0$, so $H$ is positive-definite
 
 - Measures uncertainty of a distribution $p$:
 $$H(p) = -\sum_x p(x) \log p(x) \quad \text{(or } -\int p(x) \log p(x)dx\text{)}.$$
+- The expected value of the surprise: p(x) is the weights, and -log(p(x)) is the surprise (if p(x) = 1 for something certainly appears, then the surprise is 0)
 - Units: bits (log base 2) or nats (log base $e$).
 - Maximum at uniform distribution; zero when $p$ is a delta.
 - **Cross-entropy**: $H(p, q) = -\sum_x p(x) \log q(x)$. Equal to $H(p)$ only when $q = p$. Standard loss for classification.
@@ -177,20 +178,8 @@ $$H(p) = -\sum_x p(x) \log p(x) \quad \text{(or } -\int p(x) \log p(x)dx\text{)}
 $$f(\lambda x + (1-\lambda) y) \le \lambda f(x) + (1-\lambda) f(y).$$
 - Twice-differentiable $f$ is convex iff Hessian is positive semi-definite everywhere.
 - **Strict** convexity ⇒ at most one minimum. **Strong** convexity ($f - \tfrac{\mu}{2}x^2$ is convex) ⇒ linear convergence under GD.
-- **Why it matters**: for convex objectives, any local minimum is global, and gradient descent provably converges. Examples: linear/logistic regression, SVMs (with hinge loss), LASSO.
+- For convex objectives, any local minimum is global, and gradient descent provably converges. Examples: linear/logistic regression, SVMs (with hinge loss), LASSO.
 - **Non-convex** (most deep learning losses): no global guarantees, but in practice SGD finds good minima — empirical phenomenon driven by overparameterization, implicit regularization, and benign loss landscapes.
 
----
-
-## Quick Mental-Model Map
-
-
-| Concept          | Why it matters in ML                                 |
-| ---------------- | ---------------------------------------------------- |
-| Eigen / SVD      | PCA, low-rank methods, stability analysis            |
-| Jacobian         | Backprop, normalizing flows (log-det), sensitivity   |
-| KL divergence    | Variational methods, distillation, RL regularization |
-| Gradient descent | Every neural network ever                            |
-| Convexity        | When optimization is "safe"; baseline guarantees     |
 
 

@@ -1,8 +1,6 @@
-# Phase 1 — Neural Network Core
+# Note 2 — Neural Network Core
 
-Notes covering the building blocks of neural networks: automatic differentiation, activations, loss functions, optimizers, regularization, and the PyTorch primitives that implement them.
-
-> Prerequisite: the chain rule and Jacobian sections in [`math_foundations.md`](./math_foundations.md). Backprop is just the vector chain rule applied over a graph.
+This note covering the building blocks of neural networks: automatic differentiation, activations, loss functions, optimizers, regularization, and the PyTorch primitives that implement them.
 
 ---
 
@@ -20,20 +18,33 @@ This multivariate sum (vs. a single product) is the only thing that distinguishe
 
 ### Vector-Jacobian products (VJPs)
 
-In practice we never materialize a full Jacobian. Each op exposes a **vector-Jacobian product**: given the upstream gradient $\bar{\mathbf{u}} = \partial L/\partial \mathbf{u}$, it returns $\bar{\mathbf{v}} = J^\top \bar{\mathbf{u}}$. For $\mathbf{u} = W\mathbf{v}$ the VJP is $\bar{\mathbf{v}} = W^\top \bar{\mathbf{u}}$, and the weight gradient is the outer product $\bar{W} = \bar{\mathbf{u}}\,\mathbf{v}^\top$ (see the linear-layer example in `math_foundations.md`).
+In practice we never materialize a full Jacobian. Each op exposes a **vector-Jacobian product**: given the upstream gradient $\bar{\mathbf{u}} = \partial L/\partial \mathbf{u}$, it returns $\bar{\mathbf{v}} = J^\top \bar{\mathbf{u}}$. For $\mathbf{u} = W\mathbf{v}$ the VJP is $\bar{\mathbf{v}} = W^\top \bar{\mathbf{u}}$, and the weight gradient is the outer product $\bar{W} = \bar{\mathbf{u}}\,\mathbf{v}^\top$.
 
-### Worked scalar example
+### Worked matrix example
 
-Let $L = (a \cdot b + c)^2$ with $a = 2,\; b = 3,\; c = 1$.
+A scalar chain hides the only interesting part of a VJP — the transpose. Here is the same idea where every local Jacobian is an actual matrix, so $\bar{\mathbf v} = J^\top \bar{\mathbf u}$ is a genuine matrix–vector product. The graph is a linear layer, an elementwise nonlinearity, then a scalar loss:
 
-**Forward:** $\;d = ab = 6,\quad e = d + c = 7,\quad L = e^2 = 49.$
+$$\mathbf{z} = W\mathbf{x}, \qquad \mathbf{a} = \mathbf{z}\odot\mathbf{z}\;\;(\text{elementwise square}), \qquad L = \tfrac{1}{2}\,\mathbf{a}^\top\mathbf{a}.$$
 
-**Backward** (seed $\bar L = \partial L/\partial L = 1$):
+**Forward** with $W = \begin{pmatrix} 1 & 2 \\ 0 & 1 \end{pmatrix},\; \mathbf{x} = \begin{pmatrix} 1 \\ 1 \end{pmatrix}$:
 
-$$\bar e = 2e = 14, \qquad \bar d = \bar e = 14, \qquad \bar c = \bar e = 14,$$
-$$\bar a = \bar d \cdot b = 42, \qquad \bar b = \bar d \cdot a = 28.$$
+$$\mathbf{z} = W\mathbf{x} = \begin{pmatrix} 3 \\ 1 \end{pmatrix}, \qquad \mathbf{a} = \begin{pmatrix} 9 \\ 1 \end{pmatrix}, \qquad L = \tfrac{1}{2}(81 + 1) = 41.$$
 
-Each node needed only its local derivative and the gradient handed down from its parent — no global formula. That locality is exactly what makes autograd composable.
+**Local Jacobians.** Each op's Jacobian is a matrix; the elementwise op is *diagonal* (output $i$ depends only on input $i$), the linear op is the *full* weight matrix:
+
+$$J_{L\leftarrow\mathbf{a}} = \mathbf{a}^\top, \qquad J_{\mathbf{a}\leftarrow\mathbf{z}} = \operatorname{diag}(2\mathbf{z}) = \begin{pmatrix} 6 & 0 \\ 0 & 2 \end{pmatrix}, \qquad J_{\mathbf{z}\leftarrow\mathbf{x}} = W.$$
+
+**Backward** — seed $\bar L = 1$ and push it leftward, each op applying its *transposed* Jacobian:
+
+$$\bar{\mathbf a} = \mathbf{a} = \begin{pmatrix} 9 \\ 1 \end{pmatrix}, \qquad \bar{\mathbf z} = \operatorname{diag}(2\mathbf{z})^\top \bar{\mathbf a} = \begin{pmatrix} 6 & 0 \\ 0 & 2 \end{pmatrix}\begin{pmatrix} 9 \\ 1 \end{pmatrix} = \begin{pmatrix} 54 \\ 2 \end{pmatrix},$$
+
+$$\bar{\mathbf x} = W^\top \bar{\mathbf z} = \begin{pmatrix} 1 & 0 \\ 2 & 1 \end{pmatrix}\begin{pmatrix} 54 \\ 2 \end{pmatrix} = \begin{pmatrix} 54 \\ 110 \end{pmatrix}, \qquad \bar W = \bar{\mathbf z}\,\mathbf{x}^\top = \begin{pmatrix} 54 \\ 2 \end{pmatrix}\begin{pmatrix} 1 & 1 \end{pmatrix} = \begin{pmatrix} 54 & 54 \\ 2 & 2 \end{pmatrix}.$$
+
+Note the two patterns that show up in *every* layer: the input gradient uses $W^\top$ (transpose, never the inverse), and the weight gradient is the **outer product** of the upstream gradient with the layer's input.
+
+*Check by substitution:* with $z_1 = x_1 + 2x_2,\; z_2 = x_2$ we have $L = \tfrac{1}{2}(z_1^4 + z_2^4)$, so $\partial L/\partial x_1 = 2z_1^3 = 54$ and $\partial L/\partial x_2 = 2z_1^3\cdot 2 + 2z_2^3 = 108 + 2 = 110$. ✓
+
+Each op needed only its local Jacobian and the gradient handed down from its parent — no global formula, and no full Jacobian ever materialized (the diagonal op stores just $2\mathbf{z}$). That locality is exactly what makes autograd composable.
 
 ---
 
@@ -158,7 +169,7 @@ $$\theta_{t+1} = \theta_t - \eta\, g_t.$$
 
 Simple, but oscillates in ravines and crawls on plateaus.
 
-### + Momentum
+### Momentum
 
 Accumulate an exponentially-decayed velocity to smooth the trajectory:
 
@@ -166,7 +177,7 @@ $$v_t = \beta v_{t-1} + g_t, \qquad \theta_{t+1} = \theta_t - \eta\, v_t \quad (
 
 Damps oscillation across steep directions, accelerates along consistent ones.
 
-### Adam — adaptive per-parameter steps
+### Adam (Adaptive per-parameter steps)
 
 Track first moment (mean) and second moment (uncentered variance) of gradients:
 
@@ -189,10 +200,6 @@ Adam folds L2 regularization into the gradient, which interacts badly with the a
 $$\theta_{t+1} = \theta_t - \eta\Bigl(\frac{\hat{m}_t}{\sqrt{\hat{v}_t}+\epsilon} + \lambda\,\theta_t\Bigr).$$
 
 This is the de-facto standard for training Transformers. The $\lambda\theta_t$ term decays weights at a rate independent of their gradient magnitude.
-
-### Numerical example (one Adam step)
-
-First step ($t=1$), $g_1 = 0.1$, $\eta = 0.001$: $m_1 = 0.1(1-0.9) = 0.01$, bias-corrected $\hat m_1 = 0.01/(1-0.9) = 0.1$. $v_1 = (0.1)^2(1-0.999) = 1\!\times\!10^{-5}$, $\hat v_1 = 10^{-5}/(1-0.999)=0.01$. Update $= 0.001 \cdot \frac{0.1}{\sqrt{0.01}+10^{-8}} = 0.001 \cdot \frac{0.1}{0.1} = 0.001$. On the first step Adam's step size ≈ $\eta$ regardless of gradient scale — a deliberate property that makes it robust to gradient magnitude.
 
 ---
 
@@ -298,17 +305,3 @@ for x, y in loader:
 - `model.parameters()` yields every registered tensor with `requires_grad`.
 - `model.train()` / `model.eval()` toggle Dropout and BatchNorm behavior.
 - `state_dict()` serializes parameters + buffers (running stats) for checkpointing.
-
----
-
-## Quick Mental-Model Map
-
-| Concept | What it really is |
-| ------- | ----------------- |
-| Backprop | Vector chain rule summed over a DAG's paths |
-| Autograd | Recorded graph + reverse-order VJP replay |
-| Activation | Nonlinearity chosen by its gradient profile |
-| CE / BCE loss | Gradient on logits collapses to `pred − target` |
-| Adam(W) | Per-parameter adaptive step + (decoupled) decay |
-| Norm layers | Re-center/scale activations to stabilize gradients |
-| nn.Module | Parameter registry + define-by-run `forward` |

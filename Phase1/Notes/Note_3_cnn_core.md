@@ -1,14 +1,14 @@
-# Phase 1 — Convolutional & Vision Core
+# Note 3— Convolutional & Vision Neural Network Core
 
-Notes on the building blocks of convolutional neural networks and the training tricks that make modern vision models work: convolution, pooling, residual connections, batch normalization, transfer learning, and data augmentation.
+This note focus on the building blocks of convolutional neural networks and the training tricks that make modern vision models work: convolution, pooling, residual connections, batch normalization, transfer learning, and data augmentation.
 
-> Builds on [`nn_core.md`](./nn_core.md) (backprop, activations, normalization, optimizers). A conv layer is just a weight-shared linear layer; everything about gradients and training carries over.
 
 ---
 
 ## 1. Convolution
 
 A convolution slides a small learnable **filter** (kernel) across a spatially-structured input, computing a dot product at each location. Unlike a dense layer, weights are **shared** across positions — this gives *translation equivariance* (a feature detector works anywhere in the image) and slashes the parameter count.
+Intuitionly, 
 
 ### Filter (kernel)
 
