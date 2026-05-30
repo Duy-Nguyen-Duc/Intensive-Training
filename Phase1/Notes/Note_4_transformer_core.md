@@ -1,6 +1,6 @@
-# Phase 1 — Transformer Core
+# Note 4 — Transformer Core
 
-Notes on the attention mechanism and the Transformer architecture: scaled dot-product attention, multi-head attention, positional encoding, the block structure, the three architecture families, tokenization, and causal masking.
+This note focus on the attention mechanism and the Transformer architecture: scaled dot-product attention, multi-head attention, the attention variants (self / cross / causal / bidirectional, plus multi-query and grouped-query), positional encoding, the block structure, the three architecture families, tokenization, and causal masking.
 
 
 ---
@@ -9,9 +9,9 @@ Notes on the attention mechanism and the Transformer architecture: scaled dot-pr
 
 Attention lets every token **look at** every other token and pull in a weighted mix of their information. Each token produces three vectors via learned projections of its embedding $\mathbf{x}$:
 
-- **Query** $\mathbf{q} = \mathbf{x} W_Q$ — "what am I looking for?"
-- **Key** $\mathbf{k} = \mathbf{x} W_K$ — "what do I offer?"
-- **Value** $\mathbf{v} = \mathbf{x} W_V$ — "what I actually pass on if attended to."
+- **Query** $\mathbf{q} = \mathbf{x} * W_Q$, represent "what am I looking for?"
+- **Key** $\mathbf{k} =  \mathbf{x} * W_K$, represent "what do I have?"
+- **Value** $\mathbf{v} = \mathbf{x} * W_V$, represent "what I actually pass on if attended to."
 
 Stacking the per-token vectors into matrices $Q \in \mathbb{R}^{n \times d_k}$, $K \in \mathbb{R}^{n \times d_k}$, $V \in \mathbb{R}^{n \times d_v}$ for a sequence of $n$ tokens:
 
@@ -19,7 +19,7 @@ $$\text{Attention}(Q, K, V) = \operatorname{softmax}\!\left(\frac{Q K^\top}{\sqr
 
 Step by step:
 
-1. **Scores** $S = QK^\top$ — $S_{ij}$ = dot product of query $i$ with key $j$ = how relevant token $j$ is to token $i$. Shape $n \times n$.
+1. **Scores** $S = QK^\top$, where $S_{ij}$ = dot product of query $i$ with key $j$ = how relevant token $j$ is to token $i$. Shape $n \times n$.
 2. **Scale** by $1/\sqrt{d_k}$. Without it, for large $d_k$ the dot products grow $\sim\sqrt{d_k}$ in magnitude, pushing softmax into saturated regions where gradients vanish.
 3. **Softmax** over each row → attention weights that sum to 1 (a probability distribution over the keys).
 4. **Weighted sum** of values: output row $i = \sum_j A_{ij}\mathbf{v}_j$.
@@ -34,19 +34,75 @@ Scores $\mathbf{q}K^\top = (1, 0)$; scaled by $1/\sqrt{2}$: $(0.707, 0)$. Softma
 
 ## 2. Multi-Head Attention — parallel heads
 
-A single attention computes one kind of relationship. **Multi-head attention** runs $h$ attention operations in parallel, each with its own learned $W_Q^{(i)}, W_K^{(i)}, W_V^{(i)}$ projecting into a smaller subspace of size $d_k = d_{\text{model}} / h$. Each head can specialize (one tracks syntax, another coreference, etc.).
+A single attention computes one kind of relationship, based on the initialized state. **Multi-head attention** runs $h$ attention operations in parallel, each with its own learned $W_Q^{(i)}, W_K^{(i)}, W_V^{(i)}$ projecting into a smaller subspace of size $d_k = d_{\text{model}} / h$. Each head can specialize (one tracks syntax, another coreference, etc.).
 
 $$\text{head}_i = \text{Attention}(X W_Q^{(i)}, X W_K^{(i)}, X W_V^{(i)}),$$
 $$\text{MultiHead}(X) = \operatorname{Concat}(\text{head}_1, \dots, \text{head}_h)\, W_O.$$
 
-- Concatenating $h$ heads of width $d_v = d_{\text{model}}/h$ restores width $d_{\text{model}}$; the output projection $W_O$ mixes information across heads.
+- Concatenating $h$ heads of width $d_v = d_{\text{model}}/h$ restores width $d_{\text{model}}$; the output projection $W_O$ mixes information across heads. The split happens in the embedding space, not the token space, so that each head will still see the full sentence, just a different feature space. 
 - **Cost is roughly the same** as one full-width head — the per-head dimension shrinks by $h$, so total compute is preserved while gaining representational diversity.
 
 **Example.** $d_{\text{model}} = 512$, $h = 8$ → each head works in $d_k = d_v = 64$. Eight $64$-dim outputs concatenate back to $512$.
 
 ---
 
-## 3. Positional Encoding — sinusoidal vs. learned
+## 3. Attention Variants — Self, Cross, Causal, Bidirectional, MQA/GQA
+
+Scaled dot-product attention (§1) and multi-head attention (§2) are the *core mechanism*. The variants of attention blocks come from the answer of these choices: 
+
+1. **Where do Q, K, V come from?** which creates self-attention and cross-attention.
+2. **Which keys is each query allowed to see?** which creats bidirectional and causal (masked).
+
+Any combination is valid; the named architectures (§6) are simply specific combinations.
+
+### Self-attention — one sequence attends to itself
+
+Q, K, and V are all projections of the **same** input sequence $X$:
+
+$$\text{SelfAttn}(X) = \text{Attention}(X W_Q,\; X W_K,\; X W_V).$$
+
+Every token builds its query, key, and value from itself, so the sequence *mixes information internally* — "the" looks at "cat", "it" looks at its antecedent. This is the workhorse inside both encoder and decoder blocks.
+
+### Cross-attention — one sequence attends to another
+
+Queries come from one sequence, keys/values from **another**:
+
+$$\text{CrossAttn}(Y, X) = \text{Attention}(Y W_Q,\; X W_K,\; X W_V).$$
+
+In a seq2seq decoder (§6), $Y$ = decoder states (what I'm generating) and $X$ = encoder outputs (the source sentence). The decoder *queries* the encoded input — "given what I've written so far, which source tokens matter now?" — which is how translation conditions output on input. The same shape powers retrieval-augmented and multimodal models, where K/V come from documents or image patches.
+
+### Bidirectional vs. causal — the mask sets the direction
+
+Independent of where Q/K/V come from, a mask controls visibility:
+
+- **Bidirectional (unmasked):** every query sees every key. Full context, but the model can "see the future" — good for *understanding*, unusable for generation. Encoders (BERT).
+- **Causal (masked):** query $i$ sees only keys $j \le i$; future positions are scored $-\infty$ (mechanism in §8). Required for autoregressive generation, so position $i$ can be trained to predict $i{+}1$ without peeking. Decoders (GPT).
+
+Cross-attention is normally **unmasked** (the decoder may look at the whole source), bounded only by a padding mask.
+
+### Multi-head self-attention (MHSA) — the practical unit
+
+In real models the self-attention above is *always* multi-head (§2): $h$ heads in parallel subspaces, concatenated. So the three sublayers you actually stack are:
+
+| Sublayer | Q from | K, V from | Mask | Appears in |
+| --- | --- | --- | --- | --- |
+| Bidirectional MHSA | $X$ | $X$ | none (+pad) | encoder (BERT) |
+| Causal / masked MHSA | $X$ | $X$ | causal | decoder (GPT) |
+| Multi-head cross-attention | decoder $Y$ | encoder $X$ | none (+pad) | seq2seq decoder (T5) |
+
+Concretely, with the `MultiHeadAttention(query, key, value, mask)` from `Ass_4.ipynb` — note that self-attention just passes the **same tensor three times**:
+
+```python
+mha(x, x, x)                       # bidirectional self-attention (encoder)
+mha(x, x, x, mask=causal_mask(n))  # causal self-attention       (decoder)
+mha(dec, enc, enc)                 # cross-attention (decoder queries encoder)
+```
+
+A full decoder block therefore has **two** attention sublayers — causal self-attention, then cross-attention — plus the FFN. A decoder-only LM (GPT, `Ass_5.ipynb`) drops the cross-attention and keeps only causal self-attention.
+
+---
+
+## 4. Positional Encoding — sinusoidal vs. learned
 
 Attention is **permutation-invariant**: shuffle the input tokens and the outputs shuffle identically — it has no inherent notion of order. We must inject position information by adding a position vector to each token embedding.
 
@@ -75,7 +131,7 @@ Relative position biases and **RoPE** (rotary embeddings — rotate Q/K by a pos
 
 ---
 
-## 4. Feed-Forward + Residual + LayerNorm — the block
+## 5. Feed-Forward + Residual + LayerNorm — the block
 
 A Transformer block wraps attention and a position-wise feed-forward network, each inside a **residual connection** followed by **LayerNorm**.
 
@@ -90,7 +146,7 @@ with hidden width typically $4\times d_{\text{model}}$ and $\sigma$ = GELU. Atte
 - **Post-LN** (original): $\;\text{out} = \text{LayerNorm}(\mathbf{x} + \text{Sublayer}(\mathbf{x}))$.
 - **Pre-LN** (modern, more stable for deep stacks): $\;\text{out} = \mathbf{x} + \text{Sublayer}(\text{LayerNorm}(\mathbf{x}))$.
 
-Residuals give the gradient highway (see [`cnn_core.md`](./cnn_core.md) §3); LayerNorm (not BatchNorm — normalization is per-token over features, batch-independent; see [`nn_core.md`](./nn_core.md) §6) stabilizes the scale of activations. A full block:
+Residuals give the gradient highway, while LayerNorm stabilizes the scale of activations. A full block:
 
 ```
 x = x + MultiHeadAttention(LayerNorm(x))   # mix across tokens
@@ -99,12 +155,12 @@ x = x + FFN(LayerNorm(x))                   # process each token
 
 ---
 
-## 5. Architecture Families — Encoder-only, Decoder-only, Seq2Seq
+## 6. Architecture Families — Encoder-only, Decoder-only, Seq2Seq
 
 The same block composes into three families differing in **masking** and **direction**:
 
 - **Encoder-only (BERT)** — bidirectional self-attention; every token sees every other token. Great for *understanding* (classification, NER, retrieval). Pretrained with **masked language modeling** (predict randomly masked tokens). Not generative.
-- **Decoder-only (GPT)** — **causal** self-attention; each token sees only itself and earlier tokens (§7). Trained as a next-token predictor; generates autoregressively. The dominant LLM design (GPT, LLaMA, Mistral).
+- **Decoder-only (GPT)** — **causal** self-attention; each token sees only itself and earlier tokens (§8). Trained as a next-token predictor; generates autoregressively. The dominant LLM design (GPT, LLaMA, Mistral).
 - **Encoder–Decoder / Seq2Seq (T5, original Transformer, BART)** — a bidirectional encoder reads the input; a causal decoder generates the output while **cross-attending** to the encoder's representations (decoder queries, encoder keys/values). Natural for translation/summarization. T5 frames *every* task as text-to-text.
 
 | Family | Attention | Trained on | Best at | Example |
@@ -115,9 +171,17 @@ The same block composes into three families differing in **masking** and **direc
 
 ---
 
-## 6. Tokenization — BPE & WordPiece from scratch
+## 7. Tokenization — BPE & WordPiece from scratch
 
-Models operate on a fixed vocabulary of integer IDs, not raw text. Subword tokenizers strike a balance: common words become single tokens, rare words split into pieces — handling any input without a giant vocabulary or out-of-vocabulary failures.
+Firstly, *tokenizer* is the function that splits raw text into a sequence of tokens (the atomic units) and maps each token to an integer ID from a fixed vocabulary. It's the boundary between messy human text and the model's input:
+```
+  "the cat sat"  --tokenize-->  ["the", "cat", "sat"]  --lookup-->  [791, 9059, 7731]
+```
+Those IDs then index an embedding table to become vectors, such as transform the interger ID 791 into a 64-dimension vector. The tokenizer decides what the model's atoms are. 
+
+The history of tokenizer come all the way to the most traditional **Bag-of-Word method**, where each word is tokenized into the number of its appearance in the document. While the method is simple and fast, losing its order and its similarity between words are the limitations of using this method in modern approaches. **Word-level tokenization** is the higher stages, where each word is a token, preserves order and pairs nicely with embeddings. However, the method stucks in its training vocabulary that it cannot generalize or find similar words when deploy in real world, or it cannot understand "run", "runs" and "running" refer to the same action. 
+**Character-level** approachs the tokenizing problem at the opposite extreme. Instead of tokennize each word, it focuses on a sublevel of each character, where each word is a sequence of characters, then it can generalize "running" is the same meaning as "run", only with something as suffix. Despite the effort, the sequences get very long, where it becomes hundreds of tokens, and a tokens carry little meaning. This inspire the introduce of subword tokenization. With tokenizer, we would want something that is OOV-immunity of characters with the meaning-density and short sequences of words. The insight: let the data decide the units. Frequent strings should become single tokens; rare strings should break into smaller, reusable pieces. That's exactly what **BPE** does, start from the smallest units (bytes/characters), then greedily merge the most frequent adjacent pair, repeatedly, until it hits a target vocab size. The learned merge rules are the tokenizer. 
+
 
 ### Byte-Pair Encoding (BPE)
 
@@ -170,14 +234,9 @@ Given `{"low": 5, "lower": 2, "newest": 6, "widest": 3}`, BPE quickly merges `e`
 
 Same merge loop, but instead of picking the most *frequent* pair it picks the pair that most increases corpus likelihood — score $\dfrac{\text{freq}(a,b)}{\text{freq}(a)\,\text{freq}(b)}$ — favoring pairs that co-occur more than chance. Continuation pieces are marked `##` (e.g. `playing → play, ##ing`).
 
-| | Merge criterion | Marker | Used by |
-| --- | --- | --- | --- |
-| BPE | most frequent pair | `</w>` end-marker | GPT, RoBERTa |
-| WordPiece | highest likelihood gain | `##` prefix on continuations | BERT |
-
 ---
 
-## 7. Causal Masking — autoregressive generation
+## 8. Causal Masking — autoregressive generation
 
 A decoder must not "cheat" by looking at future tokens it's supposed to predict. **Causal (look-ahead) masking** enforces this: before softmax, set scores for future positions to $-\infty$ so their attention weight becomes 0.
 
@@ -209,18 +268,3 @@ q3  [ 1  1  1  1 ]
 
 (Distinguish from the **padding mask**, which hides padding tokens in batched variable-length inputs — often combined with the causal mask.)
 
----
-
-## Quick Mental-Model Map
-
-| Concept | What it really is |
-| ------- | ----------------- |
-| Q/K/V attention | Content-based weighted average; softmax of scaled key-query matches |
-| Scaling by √dₖ | Keep softmax out of saturation so gradients survive |
-| Multi-head | Parallel attention subspaces → diverse relations, same cost |
-| Positional encoding | Inject order into a permutation-invariant operation |
-| FFN | Per-token processing; holds most of the parameters |
-| Residual + LayerNorm | Gradient highway + activation-scale stability |
-| Encoder/Decoder/Seq2Seq | Bidirectional vs. causal vs. both + cross-attention |
-| BPE / WordPiece | Greedy subword merges → open-vocabulary token IDs |
-| Causal mask | −∞ on future scores → autoregressive, no leakage |

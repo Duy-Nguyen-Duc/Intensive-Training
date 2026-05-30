@@ -1,4 +1,4 @@
-# Note 3— Convolutional & Vision Neural Network Core
+# Note 3 — Convolutional & Vision Neural Network Core
 
 This note focus on the building blocks of convolutional neural networks and the training tricks that make modern vision models work: convolution, pooling, residual connections, batch normalization, transfer learning, and data augmentation.
 
@@ -54,7 +54,7 @@ Modern architectures increasingly replace pooling with **strided convolutions** 
 
 ---
 
-## 3. ResNet — Skip Connections (tại sao cần thiết / why they're necessary)
+## 3. ResNet — Skip Connections
 
 **The problem.** Naively stacking more layers makes deep plain networks *worse* — not from overfitting but from an **optimization** failure: gradients degrade flowing back through many layers (vanishing/exploding), and the network struggles to even fit the training set. A 56-layer plain net underperformed a 20-layer one.
 
@@ -125,17 +125,3 @@ Mixup smooths decision boundaries, calibrates confidence, and regularizes strong
 
 The right augmentations encode your **prior about valid invariances** — pick transforms under which the label genuinely shouldn't change.
 
----
-
-## Quick Mental-Model Map
-
-| Concept | What it really is |
-| ------- | ----------------- |
-| Convolution | Weight-shared linear layer → translation equivariance, few params |
-| Stride / padding | Control output size; padding preserves edges, stride downsamples |
-| Receptive field | Input region one output sees; grows by stacking small kernels |
-| Pooling | Param-free spatial downsampling + small shift invariance |
-| Skip connection | Additive identity path → gradient highway, enables very deep nets |
-| BatchNorm | Per-batch renorm → smoother landscape, higher LR, mild regularizer |
-| Transfer learning | Reuse pretrained features; freeze generic, fine-tune specific |
-| Data augmentation | Encode label-preserving invariances to fight overfitting |
